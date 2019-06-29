@@ -61,8 +61,9 @@ func TestPoolSizeAdjustment(t *testing.T) {
 	}
 
 	// Finally, make sure we still have actual active workers.
-	if exp, act := "foo", pool.Process(0).(string); exp != act {
-		t.Errorf("Wrong result: %v != %v", act, exp)
+	ret, err := pool.Process(0)
+	if exp, act := "foo", ret.(string); err != nil || exp != act {
+		t.Errorf("Wrong result: %v != %v, err: %s", act, exp, err)
 	}
 
 	pool.Close()
@@ -81,9 +82,9 @@ func TestFuncJob(t *testing.T) {
 	defer pool.Close()
 
 	for i := 0; i < 10; i++ {
-		ret := pool.Process(10)
-		if exp, act := 20, ret.(int); exp != act {
-			t.Errorf("Wrong result: %v != %v", act, exp)
+		ret, err := pool.Process(10)
+		if exp, act := 20, ret.(int); err != nil || exp != act {
+			t.Errorf("Wrong result: %v != %v, err: %v", act, exp, err)
 		}
 	}
 }
@@ -97,11 +98,8 @@ func TestFuncJobTimed(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		ret, err := pool.ProcessTimed(10, time.Millisecond)
-		if err != nil {
-			t.Fatalf("Failed to process: %v", err)
-		}
-		if exp, act := 20, ret.(int); exp != act {
-			t.Errorf("Wrong result: %v != %v", act, exp)
+		if exp, act := 20, ret.(int); err != nil || exp != act {
+			t.Errorf("Wrong result: %v != %v, err: %v", act, exp, err)
 		}
 	}
 }
@@ -112,17 +110,17 @@ func TestCallbackJob(t *testing.T) {
 
 	var counter int32
 	for i := 0; i < 10; i++ {
-		ret := pool.Process(func() {
+		ret, err := pool.Process(func() {
 			atomic.AddInt32(&counter, 1)
 		})
-		if ret != nil {
-			t.Errorf("Non-nil callback response: %v", ret)
+		if ret != nil || err != nil {
+			t.Errorf("Non-nil callback response: %v, err: %v", ret, err)
 		}
 	}
 
-	ret := pool.Process("foo")
-	if exp, act := ErrJobNotFunc, ret; exp != act {
-		t.Errorf("Wrong result from non-func: %v != %v", act, exp)
+	ret, err := pool.Process("foo")
+	if exp, act := ErrJobNotFunc, ret; err != nil || exp != act {
+		t.Errorf("Wrong result from non-func: %v != %v, err: %v", act, exp, err)
 	}
 
 	if exp, act := int32(10), counter; exp != act {
@@ -162,13 +160,10 @@ func TestJobsAfterClose(t *testing.T) {
 	})
 	pool.Close()
 
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("Process after Stop() did not panic")
-		}
-	}()
-
-	pool.Process(10)
+	_, err := pool.Process(10)
+	if exp, act := ErrPoolNotRunning, err; exp != act {
+		t.Errorf("Process after Stop() returned: %v != %v", act, exp)
+	}
 }
 
 func TestParallelJobs(t *testing.T) {
@@ -192,9 +187,9 @@ func TestParallelJobs(t *testing.T) {
 
 		for i := 0; i < nWorkers; i++ {
 			go func() {
-				ret := pool.Process(10)
-				if exp, act := 20, ret.(int); exp != act {
-					t.Errorf("Wrong result: %v != %v", act, exp)
+				ret, err := pool.Process(10)
+				if exp, act := 20, ret.(int); err != nil || exp != act {
+					t.Errorf("Wrong result: %v != %v, err: %v", act, exp, err)
 				}
 				testGroup.Done()
 			}()
@@ -263,8 +258,9 @@ func TestCustomWorker(t *testing.T) {
 	}
 
 	close(worker1.blockProcChan)
-	if exp, act := 10, pool.Process(10).(int); exp != act {
-		t.Errorf("Wrong result: %v != %v", act, exp)
+	ret, err := pool.Process(10)
+	if exp, act := 10, ret.(int); err != nil || exp != act {
+		t.Errorf("Wrong result: %v != %v, err: %v", act, exp, err)
 	}
 
 	pool.Close()
@@ -277,37 +273,40 @@ func TestCustomWorker(t *testing.T) {
 
 func BenchmarkFuncJob(b *testing.B) {
 	pool := NewFunc(10, func(in interface{}) interface{} {
-		intVal := in.(int)
-		return intVal * 2
+		fVal := in.(float64)
+		for i := 0; i < 100000; i++ {
+			fVal *= 1.001
+		}
+		return fVal
 	})
 	defer pool.Close()
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		ret := pool.Process(10)
-		if exp, act := 20, ret.(int); exp != act {
-			b.Errorf("Wrong result: %v != %v", act, exp)
+		_, err := pool.Process(1.0)
+		if err != nil {
+			b.Errorf("Wrong result: err: %v", err)
 		}
 	}
 }
 
 func BenchmarkFuncTimedJob(b *testing.B) {
 	pool := NewFunc(10, func(in interface{}) interface{} {
-		intVal := in.(int)
-		return intVal * 2
+		fVal := in.(float64)
+		for i := 0; i < 100000; i++ {
+			fVal *= 1.001
+		}
+		return fVal
 	})
 	defer pool.Close()
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		ret, err := pool.ProcessTimed(10, time.Second)
+		_, err := pool.ProcessTimed(1.0, time.Second)
 		if err != nil {
-			b.Error(err)
-		}
-		if exp, act := 20, ret.(int); exp != act {
-			b.Errorf("Wrong result: %v != %v", act, exp)
+			b.Errorf("Wrong result: err: %v", err)
 		}
 	}
 }
