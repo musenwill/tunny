@@ -42,6 +42,7 @@ type workRequest struct {
 // and channel arrangement. The workerWrapper is responsible for managing the
 // lifetime of both the Worker and the goroutine.
 type workerWrapper struct {
+	workerID      int
 	worker        Worker
 	interruptChan chan struct{}
 
@@ -56,10 +57,12 @@ type workerWrapper struct {
 }
 
 func newWorkerWrapper(
+	workerID int,
 	reqChan chan<- workRequest,
 	worker Worker,
 ) *workerWrapper {
 	w := &workerWrapper{
+		workerID:      workerID,
 		worker:        worker,
 		interruptChan: make(chan struct{}),
 		reqChan:       reqChan,

@@ -230,7 +230,7 @@ func (p *Pool) SetSize(n int) {
 
 	// Add extra workers if N > len(workers)
 	for i := lWorkers; i < n; i++ {
-		p.workers = append(p.workers, newWorkerWrapper(p.reqChan, p.ctor()))
+		p.workers = append(p.workers, newWorkerWrapper(i, p.reqChan, p.ctor()))
 	}
 
 	// Asynchronously stop all workers > N
