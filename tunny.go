@@ -149,33 +149,30 @@ func NewCallback(n int) *Pool {
 // Process will use the Pool to process a payload and synchronously return the
 // result. Process can be called safely by any goroutines, but will panic if the
 // Pool has been stopped.
-func (p *Pool) Process(payload interface{}) interface{} {
+func (p *Pool) Process(payload interface{}) (interface{}, error) {
 	atomic.AddInt64(&p.queuedJobs, 1)
+	defer atomic.AddInt64(&p.queuedJobs, -1)
 
 	request, open := <-p.reqChan
 	if !open {
-		panic(ErrPoolNotRunning)
+		return nil, ErrPoolNotRunning
 	}
 
 	request.jobChan <- payload
 
 	payload, open = <-request.retChan
 	if !open {
-		panic(ErrWorkerClosed)
+		return nil, ErrWorkerClosed
 	}
 
-	atomic.AddInt64(&p.queuedJobs, -1)
-	return payload
+	return payload, nil
 }
 
 // ProcessTimed will use the Pool to process a payload and synchronously return
 // the result. If the timeout occurs before the job has finished the worker will
 // be interrupted and ErrJobTimedOut will be returned. ProcessTimed can be
 // called safely by any goroutines.
-func (p *Pool) ProcessTimed(
-	payload interface{},
-	timeout time.Duration,
-) (interface{}, error) {
+func (p *Pool) ProcessTimed(payload interface{}, timeout time.Duration) (interface{}, error) {
 	atomic.AddInt64(&p.queuedJobs, 1)
 	defer atomic.AddInt64(&p.queuedJobs, -1)
 

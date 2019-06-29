@@ -59,7 +59,7 @@ func newWorkerWrapper(
 	reqChan chan<- workRequest,
 	worker Worker,
 ) *workerWrapper {
-	w := workerWrapper{
+	w := &workerWrapper{
 		worker:        worker,
 		interruptChan: make(chan struct{}),
 		reqChan:       reqChan,
@@ -69,11 +69,12 @@ func newWorkerWrapper(
 
 	go w.run()
 
-	return &w
+	return w
 }
 
 //------------------------------------------------------------------------------
 
+// interrupt a handling request job, but not stop the worker
 func (w *workerWrapper) interrupt() {
 	close(w.interruptChan)
 	w.worker.Interrupt()
@@ -104,7 +105,7 @@ func (w *workerWrapper) run() {
 				case <-w.interruptChan:
 					w.interruptChan = make(chan struct{})
 				}
-			case _, _ = <-w.interruptChan:
+			case <-w.interruptChan:
 				w.interruptChan = make(chan struct{})
 			}
 		case <-w.closeChan:
