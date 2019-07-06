@@ -211,6 +211,40 @@ func (p *Pool) ProcessTimed(payload interface{}, timeout time.Duration) (interfa
 	return payload, nil
 }
 
+// AsyncProcess will use the Pool to process a payload and asynchronously return the
+// result. Process can be called safely by any goroutines, but will panic if the
+// Pool has been stopped.
+func (p *Pool) AsyncProcess(payloads <-chan interface{}, results chan<- interface{}) {
+	go func() {
+		requests := make(chan workRequest, len(p.workers))
+		defer close(requests)
+
+		go func() {
+			defer close(results)
+
+			for request := range requests {
+				payload, open := <-request.retChan
+				atomic.AddInt64(&p.queuedJobs, -1)
+				if !open {
+					continue // skip bad worker
+				}
+				results <- payload
+			}
+		}()
+
+		for payload := range payloads {
+			atomic.AddInt64(&p.queuedJobs, 1)
+
+			request, open := <-p.reqChan
+			if !open {
+				return
+			}
+			request.jobChan <- payload
+			requests <- request
+		}
+	}()
+}
+
 // QueueLength returns the current count of pending queued jobs.
 func (p *Pool) QueueLength() int64 {
 	return atomic.LoadInt64(&p.queuedJobs)
@@ -230,7 +264,7 @@ func (p *Pool) SetSize(n int) {
 
 	// Add extra workers if N > len(workers)
 	for i := lWorkers; i < n; i++ {
-		p.workers = append(p.workers, newWorkerWrapper(p.reqChan, p.ctor()))
+		p.workers = append(p.workers, newWorkerWrapper(i, p.reqChan, p.ctor()))
 	}
 
 	// Asynchronously stop all workers > N

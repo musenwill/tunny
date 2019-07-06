@@ -89,6 +89,38 @@ func TestFuncJob(t *testing.T) {
 	}
 }
 
+func TestFuncJobAsync(t *testing.T) {
+	pool := NewFunc(10, func(in interface{}) interface{} {
+		intVal := in.(int)
+		return intVal * 2
+	})
+	defer pool.Close()
+
+	payloads := make(chan interface{}, 10)
+	results := make(chan interface{}, 10)
+
+	pool.AsyncProcess(payloads, results)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for ret := range results {
+			if exp, act := 20, ret.(int); exp != act {
+				t.Errorf("Wrong result: %v != %v", act, exp)
+			}
+		}
+	}()
+
+	for i := 0; i < 10; i++ {
+		payloads <- 10
+	}
+	close(payloads)
+
+	wg.Wait()
+}
+
 func TestFuncJobTimed(t *testing.T) {
 	pool := NewFunc(10, func(in interface{}) interface{} {
 		intVal := in.(int)
